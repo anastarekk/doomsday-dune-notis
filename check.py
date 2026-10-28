@@ -76,7 +76,25 @@ def save_state(state):
 
 def main():
     state = load_state()
-    movies = parse_movies(fetch_page())
+
+    # If the site can't be reached (down, or blocking us), warn once and
+    # say so again when it works.
+    try:
+        html = fetch_page()
+    except requests.RequestException as e:
+        print(f"Site unreachable: {e}")
+        if not state.get("down_alerted"):
+            send_telegram(f"⚠️ Can't reach Premiere Cinemas ({e}).\n"
+                          "Checks keep running; I'll tell you when it works again.")
+            state["down_alerted"] = True
+            save_state(state)
+        return
+    if state.get("down_alerted"):
+        send_telegram("✅ Premiere Cinemas is reachable again. Movie checks are back on.")
+        state["down_alerted"] = False
+        save_state(state)
+
+    movies = parse_movies(html)
     bookable = {t: d for t, d in movies.items() if d}
     print(f"Found {len(movies)} movies, {len(bookable)} with show dates")
 
