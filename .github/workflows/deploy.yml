@@ -1,0 +1,44 @@
+name: Deploy to VPS
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:          # "Run workflow" button for manual deploys
+
+concurrency:
+  group: deploy
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    env:
+      TARGET: ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }}
+      APP_DIR: doomsday-dune-notis
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up SSH
+        run: |
+          mkdir -p ~/.ssh && chmod 700 ~/.ssh
+          echo "${{ secrets.SSH_PRIVATE_KEY }}" > ~/.ssh/id_ed25519
+          echo "${{ secrets.SSH_KNOWN_HOSTS }}" > ~/.ssh/known_hosts
+          chmod 600 ~/.ssh/id_ed25519 ~/.ssh/known_hosts
+
+      - name: Copy files
+        run: |
+          ssh "$TARGET" "mkdir -p ~/$APP_DIR"
+          scp check.py Dockerfile run.sh notified.json "$TARGET:~/$APP_DIR/"
+
+      - name: Write .env from secrets
+        env:
+          TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+        run: |
+          printf 'TELEGRAM_TOKEN=%s\nTELEGRAM_CHAT_ID=%s\n' "$TELEGRAM_TOKEN" "$TELEGRAM_CHAT_ID" \
+            | ssh "$TARGET" "umask 077 && cat > ~/$APP_DIR/.env"
+
+      - name: Build image and install cron job
+        run: |
+          ssh "$TARGET" "cd ~/$APP_DIR && chmod +x run.sh && docker build -q -t movie-notifier ."
+          ssh "$TARGET" "(crontab -l 2>/dev/null | grep -v $APP_DIR; echo '*/7 * * * * \$HOME/$APP_DIR/run.sh >> \$HOME/$APP_DIR/check.log 2>&1') | crontab -"
