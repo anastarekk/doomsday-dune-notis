@@ -2,7 +2,7 @@ name: Check movies
 
 on:
   schedule:
-    - cron: "*/15 * * * *"   # every 15 minutes (UTC)
+    - cron: "*/7 * * * *"    # every 7 minutes (UTC)
   workflow_dispatch:          # "Run workflow" button for manual tests
 
 permissions:
